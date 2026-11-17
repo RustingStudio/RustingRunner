@@ -36,7 +36,7 @@ The binary is `target/release/rusting-runner`.
 ## Weights
 
 1. Kaze-3D-v0.1 from Hugging Face,
-   [`RustingStudio/Kaze-3D-v0.1`](https://huggingface.co/RustingStudio/Kaze-3D-v0.1).
+   [`rusting-studio/Kaze-3D-v0.1`](https://huggingface.co/rusting-studio/Kaze-3D-v0.1).
    The runner reads `flow.safetensors` and `vae.safetensors` from that
    directory; the settings in `configs/` are also stored inside the two files.
 2. The image encoder, CLIP ViT-B/16, is not part of that repository. Fetch

@@ -1,0 +1,28 @@
+[package]
+name = "rusting_runner"
+version = "0.1.0"
+edition = "2024"
+description = "Runs released Rusting models. First model: Kaze-3D-v0.1, one image to one mesh."
+license-file = "LICENSE.md"
+rust-version = "1.88"
+
+[[bin]]
+name = "rusting-runner"
+path = "src/main.rs"
+
+[dependencies]
+rusting_brain = { path = "../RustingBrain", features = ["images"] }
+rand = { version = "0.8", features = ["std", "std_rng"] }
+
+[features]
+default = []
+# Runs every model on an NVIDIA card: `--features cuda`, then `--cuda 0`.
+cuda = ["rusting_brain/cuda"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.test]
+opt-level = 2

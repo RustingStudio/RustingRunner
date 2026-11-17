@@ -44,6 +44,13 @@ The binary is `target/release/rusting-runner`.
    [`openai/clip-vit-base-patch16`](https://huggingface.co/openai/clip-vit-base-patch16)
    and put it at `Kaze-3D-v0.1/clip-vit-base-patch16/model.safetensors`, or
    name it with `--clip`.
+   The file is not on that repository's main branch; it is in its
+   safetensors pull request:
+
+   ```bash
+   hf download openai/clip-vit-base-patch16 model.safetensors --revision refs/pr/17 \
+       --local-dir Kaze-3D-v0.1/clip-vit-base-patch16
+   ```
 
 ```
 Kaze-3D-v0.1/

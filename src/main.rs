@@ -70,7 +70,10 @@ const CHUNK: usize = 65_536;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("3d") => parse(&args[1..]).and_then(|args| run(&args).map_err(|e| e.to_string())),
+        Some("3d") => parse(&args[1..]).and_then(|args| {
+            check_paths(&args)?;
+            run(&args).map_err(|e| e.to_string())
+        }),
         None | Some("--help" | "-h" | "help") => {
             println!("{USAGE}");
             Ok(())
@@ -129,7 +132,46 @@ fn parse(flags: &[String]) -> Result<Args, String> {
     if args.resolution < 2 {
         return Err("--resolution is the marching grid, so at least two".into());
     }
+    if args.steps == 0 {
+        return Err("--steps is how often the flow is stepped, so at least one".into());
+    }
+    if !args.guidance.is_finite() {
+        return Err(format!(
+            "--guidance {} is not a finite number",
+            args.guidance
+        ));
+    }
     Ok(args)
+}
+
+/// Names the file that is missing before any model is loaded, and the output
+/// that cannot be written before minutes are spent sampling for it.
+fn check_paths(args: &Args) -> Result<(), String> {
+    let release = "--weights must be the Kaze-3D release directory";
+    for (path, hint) in [
+        (&args.flow, release),
+        (&args.vae, release),
+        (
+            &args.clip,
+            "CLIP ViT-B/16 is fetched separately (see the README) or named with --clip",
+        ),
+        (&args.image, "--image must be a PNG or JPEG file"),
+    ] {
+        if !path.is_file() {
+            return Err(format!("{} is not a file: {hint}", path.display()));
+        }
+    }
+    // Opened for appending, so a mesh that is already there is left alone.
+    let fresh = !args.out.exists();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&args.out)
+        .map_err(|error| format!("--out {} cannot be written: {error}", args.out.display()))?;
+    if fresh {
+        let _ = std::fs::remove_file(&args.out);
+    }
+    Ok(())
 }
 
 /// Runs the whole pipeline and writes the GLB.
@@ -317,6 +359,54 @@ mod tests {
             assert!((radius - 0.5).abs() < 0.05, "{radius}");
         }
         assert!(extract(|q: &Matrix| Ok(vec![1.0; q.rows]), 8, 0).is_err());
+    }
+
+    /// What a first run gets wrong is named before any model is loaded.
+    #[test]
+    fn bad_flags_and_missing_files_are_named() {
+        let dir = std::env::temp_dir().join(format!("rusting_runner_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let at = |name: &str| dir.join(name).to_str().unwrap().to_string();
+        let flags = |extra: &[&str]| {
+            let mut flags = vec!["--weights".into(), at(""), "--image".into(), at("in.png")];
+            flags.extend(extra.iter().map(|flag| flag.to_string()));
+            parse(&flags)
+        };
+        for (flag, value) in [
+            ("--steps", "0"),
+            ("--guidance", "NaN"),
+            ("--guidance", "inf"),
+        ] {
+            let error = flags(&[flag, value]).err().expect("the value is refused");
+            assert!(error.contains(flag), "{error}");
+        }
+
+        // Each missing file is named in turn, then the output.
+        let out = at("missing/out.glb");
+        let args = flags(&["--clip", &at("clip.safetensors"), "--out", &out]).unwrap();
+        for name in [
+            "flow.safetensors",
+            "vae.safetensors",
+            "clip.safetensors",
+            "in.png",
+        ] {
+            let error = check_paths(&args).unwrap_err();
+            assert!(error.contains(name), "{error}");
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        assert!(check_paths(&args).unwrap_err().contains(&out));
+        let args = flags(&["--clip", &at("clip.safetensors"), "--out", &at("sub")]).unwrap();
+        assert!(check_paths(&args).unwrap_err().contains("--out"));
+
+        // A writable output passes, and the check leaves no file behind and
+        // does not empty one that is there.
+        let args = flags(&["--clip", &at("clip.safetensors"), "--out", &at("out.glb")]).unwrap();
+        check_paths(&args).unwrap();
+        assert!(!args.out.exists());
+        std::fs::write(&args.out, b"mesh").unwrap();
+        check_paths(&args).unwrap();
+        assert_eq!(std::fs::read(&args.out).unwrap(), b"mesh");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The whole pipeline with the released weights, when they are there:
